@@ -3,7 +3,7 @@ Enter/Exit Batocera from the host operating system (for Raspberry Pi 5)
 
 The Batocera OS is highly optimized for games, as a result, it has left out all other capabilities a normal operating system has. This makes life a bit difficult for users who wants both playing games and doing computing stuffs, because you need to install a separate operating system, need to buy and flash a separate microSD/SSD/USD-HDD, and reboot in order to switch between operating systems.
 
-In this tutorial, we describe how to directly run Batocera’s EmulationStation from inside Raspbian OS on Raspberry Pi 5 without rebooting or flashing MicroSD card. The same principle can be applied to PC or other systems (such as Ubuntu) as well. My previous solution no longer works on new versions of Batocera and Raspbian OS, thanks to OpenAI ChatGPT which helped me figured out this new elegant solution which does not require modifying Batocera root filesystem contents and can handle Batocera future updates for at least several generations.
+In this tutorial, we describe how to directly run Batocera’s EmulationStation from inside Raspbian OS on Raspberry Pi 5 without rebooting or flashing MicroSD card. The same principle can be applied to PC or other systems (such as Ubuntu) as well. The trick is that if anything is not working in Batocera (e.g., sound, bluetooth, etc.), try to completely stop that service in the host system before launching Batocera. My previous solution no longer works on new versions of Batocera and Raspbian OS, thanks to OpenAI ChatGPT which helped me figured out this new elegant solution which does not require modifying Batocera root filesystem contents and might be able handle Batocera future updates for at least several generations.
 
 # Preparation (need to do once)
 In order to run Batocera emulationstation inside Raspbian OS 64-bit (on RPi5), you need to make some adjustments to the default OS.
@@ -28,8 +28,9 @@ After reboot, make sure sound is still working on the host system, if not, `apt 
 The steps are explained in details below:
 1. Download and extract Batocera Image for Raspberry Pi 5, you can also download pre-made Batocera game-pack images from ArcadePunk. This is typically `XXX.img.xz` or `XXX.img.gz` or etc. Extract the image so that you have `XXX.img`.
 2. Download the script `bato-launch.sh`.
-3. SSH into the host system.
-4. To start Batocera, run `./bato-launch.sh <your-batocera-image.img>`, to stop Batocera, run `./bato-launch.sh stop`.
+3. SSH into the host system. This script `bato-launch.sh` can only run inside SSH. If you want to make it work in desktop GUI, you can use the same `tmux send-key` trick. But I will not describe here. You may refer to my previous post at [Enter/Exit Batocera on RPi4](https://forum.batocera.org/d/6862-tutorial-enterexit-batocera-from-raspbian-os-on-raspberry-pi-4)
+4. To start Batocera, run `./bato-launch.sh <your-batocera-image.img>`. In Batocera "MAIN MENU"->"QUIT", "RESTART" will restart emulationstation, "SHUTDOWN" will quit to desktop. To explicitly stop Batocera, run `./bato-launch.sh stop`. To stop Batocera emulationstation but without unmounting filesystem and returning to desktop, press Ctrl+C on the start script.
+5. To copy over your ROMs and saved games, you can copy into `/batocera/rootfs.upper/userdata/` when Batocera is not running, or `/batocera/rootfs/userdata/` when Batocera is running.
 
 # Details explained (`bato-launch.sh`)
 All steps are included in the script `bato-launch.sh`. Here, I will provide detailed explanations.

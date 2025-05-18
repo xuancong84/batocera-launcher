@@ -7,13 +7,14 @@ if [ $# == 0 ]; then
 fi
 
 if [ `whoami` != root ]; then
-	sudo $0
+	sudo $0 "$@"
 	exit
 fi
 
 # get default display manager
 IMG="$1"
 DM=`basename $(cat /etc/X11/default-display-manager)`
+PORT=54321
 
 mount_if_not () {
 	if [ $# -lt 2 ]; then
@@ -27,13 +28,13 @@ mount_if_not () {
 }
 
 unmount_safe () {
-	umount $1
+	if mountpoint -q "$1"; then
+		umount $1
+	fi
 	if mountpoint -q "$1"; then
 		umount -fl $1
 	fi
 }
-
-#rm S02resize S07network S08connman
 
 if [ $1 != stop ]; then
 	# Mount Batocera image
@@ -50,9 +51,21 @@ if [ $1 != stop ]; then
 		mount_if_not /$d /batocera/rootfs/$d --bind
 	done
 
+	if [ "$2" == mount ]; then exit; fi
+
 	# Copy over DNS configuration so that chroot can access Internet
 	rm -f /batocera/rootfs/etc/resolv.conf /batocera/rootfs/etc/machine-id
 	cp /etc/resolv.conf /etc/machine-id /batocera/rootfs/etc/
+
+	# Re-purpose shutdown, reboot, and poweroff
+	if [ ! -e /batocera/rootfs/root/reboot ]; then
+		cd /batocera/rootfs/sbin/
+		mv -f shutdown reboot poweroff ../root/ 2>/dev/null
+		mkfifo ../signal.fifo
+		echo -e '#!/bin/bash\nif [[ "$*" =~ -r ]]; then /etc/init.d/S31emulationstation restart\n else echo exit>/signal.fifo\nfi' >shutdown
+		chmod +x shutdown
+		cd -
+	fi
 
 	# Copy over initial emulationstation configuration files to /userdata
 	if [ ! -e /batocera/rootfs/userdata/system ]; then
@@ -72,44 +85,49 @@ if [ $1 != stop ]; then
 	systemctl stop bluetooth
 	systemctl stop $DM
 
+	if [ "$2" == prepare ]; then exit; fi
+
 	# Enter Batocera
 	#chroot /batocera/rootfs /etc/init.d/S01dbus start
-	chroot /batocera/rootfs /etc/init.d/S03seatd start
 	#chroot /batocera/rootfs /etc/init.d/S05udev start
+	chroot /batocera/rootfs /etc/init.d/S03seatd start
 	chroot /batocera/rootfs /etc/init.d/S06audio start
 	chroot /batocera/rootfs bash -c "WLR_BACKENDS=drm WLR_DRM_DEVICES=$GPU /etc/init.d/S31emulationstation start"
 	chroot /batocera/rootfs /etc/init.d/S32bluetooth start
 	chroot /batocera/rootfs /etc/init.d/S50triggerhappy start
 	chroot /batocera/rootfs /etc/init.d/S90hotkeygen start
-else
-	sync
 
-	# Exit Batocera
-	chroot /batocera/rootfs /etc/init.d/S90hotkeygen stop
-	chroot /batocera/rootfs /etc/init.d/S50triggerhappy stop
-	chroot /batocera/rootfs /etc/init.d/S32bluetooth stop
-	chroot /batocera/rootfs /etc/init.d/S31emulationstation stop
-	sleep 0.5
-	killall -9 emulationstation
-	chroot /batocera/rootfs start-stop-daemon -K --exec /usr/libexec/bluetooth/bluetoothd
-	chroot /batocera/rootfs /etc/init.d/S06audio stop
-	#chroot /batocera/rootfs /etc/init.d/S05udev stop
-	chroot /batocera/rootfs /etc/init.d/S03seatd stop
-	#chroot /batocera/rootfs /etc/init.d/S01dbus stop
-
-	# Start display manager
-	systemctl restart $DM
-	systemctl restart bluetooth
-
-	for d in lib/firmware var/run run sys proc dev/pts dev; do
-		unmount_safe /batocera/rootfs/$d
-	done
-	unmount_safe /batocera/rootfs/boot
-	unmount_safe /batocera/rootfs
-	unmount_safe /batocera/rootfs.lower
-	unmount_safe /batocera/boot
-	losetup -l | grep batocera | awk '{print $1}' | while read line; do
-		losetup -d $line
-	done
+	read </batocera/rootfs/signal.fifo
 fi
 
+sync
+
+# Exit Batocera
+chroot /batocera/rootfs /etc/init.d/S90hotkeygen stop
+chroot /batocera/rootfs /etc/init.d/S50triggerhappy stop
+chroot /batocera/rootfs /etc/init.d/S32bluetooth stop
+chroot /batocera/rootfs /etc/init.d/S31emulationstation stop
+sleep 0.5
+killall -9 emulationstation
+chroot /batocera/rootfs start-stop-daemon -K --exec `which bluetoothd`
+chroot /batocera/rootfs /etc/init.d/S06audio stop
+chroot /batocera/rootfs /etc/init.d/S03seatd stop
+#chroot /batocera/rootfs /etc/init.d/S05udev stop
+#chroot /batocera/rootfs /etc/init.d/S01dbus stop
+
+# Start display manager
+systemctl restart $DM
+systemctl restart bluetooth
+
+for d in lib/firmware var/run run sys proc dev/pts dev; do
+	unmount_safe /batocera/rootfs/$d
+done
+unmount_safe /batocera/rootfs/boot
+unmount_safe /batocera/rootfs
+unmount_safe /batocera/rootfs.lower
+unmount_safe /batocera/boot
+losetup -l | grep batocera | awk '{print $1}' | while read line; do
+	losetup -d $line
+done
+
+killall `basename $0`
